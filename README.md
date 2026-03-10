@@ -22,3 +22,6 @@ A 2D turn-based strategy game inspired by "Hive".
 3. **Access the Game:**
    Open your browser and navigate to:
    [http://localhost:8080](http://localhost:8080)
+
+## TODO
+[ ] Add license

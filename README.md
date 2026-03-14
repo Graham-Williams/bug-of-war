@@ -2,6 +2,11 @@
 
 A 2D turn-based strategy game inspired by "Hive".
 
+## Current Progress: Hex Grid Math & Rendering
+The project now includes:
+*   **Hexagonal Math**: Core logic for axial/cube coordinates, distance, neighbors, and rounding in `hex_math.go`.
+*   **Interactive Canvas**: A flat-topped hexagonal grid rendered via HTML5 Canvas in `app.js`.
+
 ## Prerequisites
 
 * **Go Version 1.26.1**
@@ -16,7 +21,7 @@ A 2D turn-based strategy game inspired by "Hive".
 
 2. **Run the Server:**
    ```bash
-   go run main.go
+   go run .
    ```
 
 3. **Access the Game:**
@@ -24,4 +29,7 @@ A 2D turn-based strategy game inspired by "Hive".
    [http://localhost:8080](http://localhost:8080)
 
 ## TODO
+[ ] WebSocket infrastructure
+[ ] Initial game state & piece types
+[ ] Movement validation logic
 [ ] Add license

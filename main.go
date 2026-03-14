@@ -6,10 +6,9 @@ import (
 )
 
 func main() {
-	// Serve the index.html file at the root path
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "index.html")
-	})
+	// Serve static files from the current directory
+	fs := http.FileServer(http.Dir("."))
+	http.Handle("/", fs)
 
 	port := ":8080"
 	fmt.Printf("Server starting on http://localhost%s\n", port)

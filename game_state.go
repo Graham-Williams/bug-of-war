@@ -41,6 +41,9 @@ type GameState struct {
 
 	// GameStatus could be "active", "white_win", "black_win", or "draw".
 	GameStatus string `json:"game_status"`
+
+	// TurnCount tracks the number of turns each player has taken.
+	TurnCount map[Color]int `json:"turn_count"`
 }
 
 // NewGame initializes a fresh game with all pieces in each player's hand.
@@ -53,6 +56,10 @@ func NewGame() *GameState {
 		},
 		CurrentTurn: White,
 		GameStatus:  "active",
+		TurnCount: map[Color]int{
+			White: 0,
+			Black: 0,
+		},
 	}
 }
 
@@ -83,9 +90,84 @@ func (gs *GameState) PlacePiece(h Hex, p Piece) {
 	gs.Grid[key] = append(gs.Grid[key], p)
 }
 
+// IsValidPlacement checks if a piece can be placed at a hex.
+func (gs *GameState) IsValidPlacement(color Color, pt PieceType, h Hex) bool {
+	// 1. Correct turn?
+	if color != gs.CurrentTurn {
+		return false
+	}
+
+	// 2. Already occupied?
+	if gs.GetTopPiece(h) != nil {
+		return false
+	}
+
+	// 3. Piece in hand?
+	hand := gs.Hands[color]
+	hasPiece := false
+	for _, p := range hand {
+		if p.Type == pt {
+			hasPiece = true
+			break
+		}
+	}
+	if !hasPiece {
+		return false
+	}
+
+	// 4. Queen must be placed by 4th turn.
+	if gs.TurnCount[color] == 3 {
+		hasQueen := false
+		for _, p := range hand {
+			if p.Type == Queen {
+				hasQueen = true
+				break
+			}
+		}
+		if hasQueen && pt != Queen {
+			return false
+		}
+	}
+
+	// 5. Adjacency rules
+	gridSize := len(gs.Grid)
+
+	// First piece: any hex is valid.
+	if gridSize == 0 {
+		return true
+	}
+
+	neighbors := h.Neighbors()
+	hasFriendlyNeighbor := false
+	hasEnemyNeighbor := false
+
+	for _, n := range neighbors {
+		neighborPiece := gs.GetTopPiece(n)
+		if neighborPiece != nil {
+			if neighborPiece.Color == color {
+				hasFriendlyNeighbor = true
+			} else {
+				hasEnemyNeighbor = true
+			}
+		}
+	}
+
+	// Second piece: must be adjacent to the first piece (regardless of color).
+	if gridSize == 1 {
+		return hasFriendlyNeighbor || hasEnemyNeighbor
+	}
+
+	// Subsequent pieces: must be adjacent to friendly AND NOT adjacent to enemy.
+	return hasFriendlyNeighbor && !hasEnemyNeighbor
+}
+
 // PlayPiece places a piece from a player's hand onto the grid and switches the turn.
-// Returns false if the piece is not in the player's hand.
+// Returns false if the piece is not in the player's hand or the move is invalid.
 func (gs *GameState) PlayPiece(h Hex, pt PieceType) bool {
+	if !gs.IsValidPlacement(gs.CurrentTurn, pt, h) {
+		return false
+	}
+
 	hand := gs.Hands[gs.CurrentTurn]
 	foundIdx := -1
 	for i, p := range hand {
@@ -95,6 +177,7 @@ func (gs *GameState) PlayPiece(h Hex, pt PieceType) bool {
 		}
 	}
 
+	// (We already checked in IsValidPlacement, but for safety)
 	if foundIdx == -1 {
 		return false
 	}
@@ -105,6 +188,9 @@ func (gs *GameState) PlayPiece(h Hex, pt PieceType) bool {
 
 	// Add to grid
 	gs.PlacePiece(h, p)
+
+	// Increment turn count
+	gs.TurnCount[gs.CurrentTurn]++
 
 	// Toggle turn
 	if gs.CurrentTurn == White {

@@ -26,20 +26,71 @@
             position: absolute;
             top: 20px;
             left: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
             pointer-events: none;
+        }
+        .ui-panel {
+            pointer-events: auto;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         }
         .coords {
             font-size: 14px;
             color: #666;
-            background: rgba(255, 255, 255, 0.8);
-            padding: 4px 8px;
-            border-radius: 4px;
+        }
+        .hand {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+            max-width: 300px;
+        }
+        .piece-button {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 2px solid #ccc;
+            background: white;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        .piece-button:hover {
+            border-color: #a8d5ff;
+            background: #f8fbff;
+        }
+        .piece-button.selected {
+            border-color: #007bff;
+            background: #e7f3ff;
+            transform: scale(1.1);
+        }
+        .piece-button.disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
         }
     </style>
 </head>
 <body>
     <div id="ui-overlay">
-        <div class="coords" id="coords">Q: 0, R: 0</div>
+        <div class="ui-panel">
+            <div class="coords" id="coords">Q: 0, R: 0</div>
+            <div id="turn-display" style="margin-top: 5px; font-weight: bold;">Turn: White</div>
+        </div>
+        <div class="ui-panel">
+            <div style="font-size: 12px; margin-bottom: 5px; color: #666;">White Hand</div>
+            <div id="white-hand" class="hand"></div>
+        </div>
+        <div class="ui-panel">
+            <div style="font-size: 12px; margin-bottom: 5px; color: #666;">Black Hand</div>
+            <div id="black-hand" class="hand"></div>
+        </div>
     </div>
     <canvas id="gameCanvas"></canvas>
     <script src="app.js"></script>

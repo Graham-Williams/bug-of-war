@@ -18,8 +18,8 @@ I will be hosting this locally on my machine, acting as both the server and a cl
 ## Roadmap
 1. [x] Hex grid math and basic canvas rendering.
 2. [x] Core game state and piece definitions.
-3. [ ] **Next:** Placement Interaction & Rules (Selecting from hand, placement validation, turn switching).
-4. [ ] Movement Interaction & Rules (Moving on-board pieces, "One Hive" rule, specific bug patterns).
+3. [x] Placement Interaction & Rules (Selecting from hand, placement validation, turn switching).
+4. [ ] **Next:** Movement Interaction & Rules (Moving on-board pieces, "One Hive" rule, specific bug patterns).
 5. [ ] WebSocket infrastructure for real-time multiplayer.
 6. [ ] Win condition detection (Queen surrounded).
 

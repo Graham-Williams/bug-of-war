@@ -1,6 +1,9 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const coordsDisplay = document.getElementById('coords');
+const turnDisplay = document.getElementById('turn-display');
+const whiteHandDiv = document.getElementById('white-hand');
+const blackHandDiv = document.getElementById('black-hand');
 
 const HEX_SIZE = 40; // Distance from center to vertex
 
@@ -9,7 +12,8 @@ const COLORS = {
     White: { fill: '#ffffff', text: '#000000' },
     Black: { fill: '#333333', text: '#ffffff' },
     Empty: { fill: '#eee4d3', stroke: '#cbbba0' },
-    Selected: { stroke: '#a8d5ff', width: 4 }
+    Selected: { stroke: '#007bff', width: 4 },
+    Hover: { stroke: '#a8d5ff', width: 2 }
 };
 
 const PIECE_LABELS = {
@@ -22,7 +26,8 @@ const PIECE_LABELS = {
 
 // --- State ---
 let gameState = { grid: {}, hands: {}, current_turn: 'White' };
-let selectedHex = { q: null, r: null };
+let hoveredHex = { q: null, r: null };
+let selectedPieceFromHand = null; // { type, color }
 
 // --- Hex Math Helpers ---
 function getHexCorner(center, size, i) {
@@ -59,7 +64,7 @@ function hexRound(q, r) {
 }
 
 // --- Rendering ---
-function drawHex(q, r, piece = null, isSelected = false) {
+function drawHex(q, r, piece = null, isHovered = false) {
     const center = axialToPixel(q, r);
     const colorTheme = piece ? COLORS[piece.color] : COLORS.Empty;
 
@@ -76,8 +81,13 @@ function drawHex(q, r, piece = null, isSelected = false) {
     ctx.fill();
 
     // Stroke hex
-    ctx.strokeStyle = isSelected ? COLORS.Selected.stroke : (COLORS.Empty.stroke);
-    ctx.lineWidth = isSelected ? COLORS.Selected.width : 2;
+    if (isHovered) {
+        ctx.strokeStyle = COLORS.Hover.stroke;
+        ctx.lineWidth = COLORS.Hover.width;
+    } else {
+        ctx.strokeStyle = COLORS.Empty.stroke;
+        ctx.lineWidth = 2;
+    }
     ctx.stroke();
 
     // Draw piece label if exists
@@ -95,31 +105,75 @@ function drawHex(q, r, piece = null, isSelected = false) {
     ctx.fillText(`${q},${r}`, center.x, center.y + (piece ? 15 : 4));
 }
 
+function updateHandUI() {
+    ['White', 'Black'].forEach(color => {
+        const div = color === 'White' ? whiteHandDiv : blackHandDiv;
+        const hand = gameState.hands[color] || [];
+        
+        // Group by type for a cleaner UI
+        const counts = hand.reduce((acc, p) => {
+            acc[p.type] = (acc[p.type] || 0) + 1;
+            return acc;
+        }, {});
+
+        div.innerHTML = '';
+        Object.keys(PIECE_LABELS).forEach(type => {
+            const count = counts[type] || 0;
+            const btn = document.createElement('div');
+            btn.className = `piece-button ${count === 0 ? 'disabled' : ''} ${selectedPieceFromHand?.type === type && selectedPieceFromHand?.color === color ? 'selected' : ''}`;
+            btn.innerText = PIECE_LABELS[type];
+            btn.title = `${type} (${count})`;
+            
+            if (count > 0 && color === gameState.current_turn) {
+                btn.onclick = () => {
+                    if (selectedPieceFromHand?.type === type && selectedPieceFromHand?.color === color) {
+                        selectedPieceFromHand = null;
+                    } else {
+                        selectedPieceFromHand = { type, color };
+                    }
+                    updateHandUI();
+                };
+            }
+            
+            const badge = document.createElement('span');
+            badge.style.position = 'absolute';
+            badge.style.fontSize = '8px';
+            badge.style.bottom = '-5px';
+            badge.style.right = '-5px';
+            badge.style.background = '#007bff';
+            badge.style.color = 'white';
+            badge.style.borderRadius = '50%';
+            badge.style.width = '12px';
+            badge.style.height = '12px';
+            badge.style.display = count > 1 ? 'flex' : 'none';
+            badge.style.justifyContent = 'center';
+            badge.style.alignItems = 'center';
+            badge.innerText = count;
+            btn.style.position = 'relative';
+            btn.appendChild(badge);
+
+            div.appendChild(btn);
+        });
+    });
+}
+
 function draw() {
     if (!canvas.width || !canvas.height) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // 1. Draw background grid
+    // 1. Determine grid range to draw (center around 0,0)
+    // We want to show a reasonable area around the pieces
     const range = 5;
     for (let q = -range; q <= range; q++) {
         for (let r = -range; r <= range; r++) {
             if (Math.abs(q + r) <= range) {
                 const key = `${q},${r}`;
-                // Only draw empty hex if no piece is there
-                if (!gameState.grid[key]) {
-                    const isSelected = q === selectedHex.q && r === selectedHex.r;
-                    drawHex(q, r, null, isSelected);
-                }
+                const isHovered = q === hoveredHex.q && r === hoveredHex.r;
+                const stack = gameState.grid[key];
+                const topPiece = stack && stack.length > 0 ? stack[stack.length - 1] : null;
+                drawHex(q, r, topPiece, isHovered);
             }
         }
-    }
-
-    // 2. Draw pieces from the server state
-    for (const [coords, stack] of Object.entries(gameState.grid)) {
-        const [q, r] = coords.split(',').map(Number);
-        const topPiece = stack[stack.length - 1];
-        const isSelected = q === selectedHex.q && r === selectedHex.r;
-        drawHex(q, r, topPiece, isSelected);
     }
 }
 
@@ -127,21 +181,35 @@ function draw() {
 async function fetchState() {
     try {
         const response = await fetch('/state');
-        const newState = await response.json();
-        
-        // Convert the backend map key {Q:0, R:0} to a string key "0,0" for easier lookup
-        // The backend JSON for a map with struct keys is usually an object with stringified keys like "{\"Q\":0,\"R\":0}"
-        // BUT Go's JSON encoder for maps with struct keys is only supported if they implement TextMarshaler.
-        // Let's assume for now we might need to adjust the backend if the format is tricky.
-        
-        // Actual fix for Go map JSON: it's better to use string keys on the backend or 
-        // handle the complex key parsing here. For simplicity in this step, let's update 
-        // the backend to use string keys in a future turn if needed.
-        
-        gameState = newState;
+        gameState = await response.json();
+        turnDisplay.innerText = `Turn: ${gameState.current_turn}`;
+        updateHandUI();
         draw();
     } catch (err) {
         console.error("Failed to fetch game state:", err);
+    }
+}
+
+async function placePiece(q, r, type) {
+    try {
+        const response = await fetch('/place', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ q, r, type })
+        });
+        
+        if (response.ok) {
+            gameState = await response.json();
+            selectedPieceFromHand = null;
+            updateHandUI();
+            draw();
+        } else {
+            const err = await response.text();
+            console.error("Placement failed:", err);
+            alert("Invalid move: " + err);
+        }
+    } catch (err) {
+        console.error("Failed to place piece:", err);
     }
 }
 
@@ -160,14 +228,24 @@ canvas.addEventListener('mousemove', (e) => {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     const hex = pixelToAxial(x, y);
-    coordsDisplay.innerText = `Q: ${hex.q}, R: ${hex.r} | Turn: ${gameState.current_turn}`;
+    coordsDisplay.innerText = `Q: ${hex.q}, R: ${hex.r}`;
     
-    if (hex.q !== selectedHex.q || hex.r !== selectedHex.r) {
-        selectedHex = hex;
+    if (hex.q !== hoveredHex.q || hex.r !== hoveredHex.r) {
+        hoveredHex = hex;
         draw();
+    }
+});
+
+canvas.addEventListener('click', (e) => {
+    if (selectedPieceFromHand) {
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const hex = pixelToAxial(x, y);
+        placePiece(hex.q, hex.r, selectedPieceFromHand.type);
     }
 });
 
 // Initial fetch
 fetchState();
-setInterval(fetchState, 2000); // Poll every 2s for now
+setInterval(fetchState, 5000); // Polling slower now as we update on action

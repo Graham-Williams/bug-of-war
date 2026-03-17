@@ -8,17 +8,6 @@ import (
 
 var game = NewGame()
 
-func init() {
-	// TEMPORARY: Pre-place a variety of pieces for visual verification.
-	// This block will be removed once the MOVE_PIECE/PLACE_PIECE logic is implemented.
-	game.PlacePiece(Hex{Q: 0, R: 0}, Piece{Type: Queen, Color: White})
-	game.PlacePiece(Hex{Q: 1, R: 0}, Piece{Type: Queen, Color: Black})
-	game.PlacePiece(Hex{Q: 0, R: 1}, Piece{Type: Ant, Color: White})
-	game.PlacePiece(Hex{Q: -1, R: 1}, Piece{Type: Beetle, Color: Black})
-	game.PlacePiece(Hex{Q: 1, R: -1}, Piece{Type: Grasshopper, Color: White})
-	game.PlacePiece(Hex{Q: 2, R: -1}, Piece{Type: Spider, Color: Black})
-}
-
 func main() {
 	// API to get the current game state
 	http.HandleFunc("/state", func(w http.ResponseWriter, r *http.Request) {
@@ -26,10 +15,37 @@ func main() {
 		json.NewEncoder(w).Encode(game)
 	})
 
+	// API to place a piece from hand
+	http.HandleFunc("/place", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req struct {
+			Q    int       `json:"q"`
+			R    int       `json:"r"`
+			Type PieceType `json:"type"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request", http.StatusBadRequest)
+			return
+		}
+
+		h := Hex{Q: req.Q, R: req.R}
+		if !game.PlayPiece(h, req.Type) {
+			http.Error(w, "Invalid move", http.StatusUnprocessableEntity)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(game)
+	})
+
 	// Serve static files from the current directory
 	fs := http.FileServer(http.Dir("."))
 	http.Handle("/", fs)
-
 	port := ":8080"
 	fmt.Printf("Server starting on http://localhost%s\n", port)
 	if err := http.ListenAndServe(port, nil); err != nil {

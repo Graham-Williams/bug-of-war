@@ -31,7 +31,10 @@ go test -v .
 ```
 
 ## Roadmap
-[ ] WebSocket infrastructure
+[x] Hex Grid & Canvas Rendering
 [x] Initial game state & piece types
+[x] Placement Interaction & Rules
 [ ] Movement validation logic
+[ ] WebSocket infrastructure
+[ ] Win condition detection
 [ ] Add license

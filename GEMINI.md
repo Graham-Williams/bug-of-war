@@ -19,9 +19,9 @@ I will be hosting this locally on my machine, acting as both the server and a cl
 1. [x] Hex grid math and basic canvas rendering.
 2. [x] Core game state and piece definitions.
 3. [x] Placement Interaction & Rules (Selecting from hand, placement validation, turn switching).
-4. [ ] **Next:** Movement Interaction & Rules (Moving on-board pieces, "One Hive" rule, specific bug patterns).
-5. [ ] WebSocket infrastructure for real-time multiplayer.
-6. [ ] Win condition detection (Queen surrounded).
+4. [x] Movement & Win Conditions (Moving on-board pieces, "One Hive" rule, bug patterns, Queen surrounded detection).
+5. [ ] **Testing & Refactoring:** Integration and regression tests to ensure stability for future features.
+6. [ ] WebSocket infrastructure for real-time multiplayer.
 
 ## Architecture & Data Structures
 * **Grid System:** The game uses a flat-topped hexagonal grid. Use cube coordinates ($x, y, z$ where $x + y + z = 0$) or axial coordinates ($q, r$) for all piece placements and distance calculations.

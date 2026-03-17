@@ -2,6 +2,7 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const coordsDisplay = document.getElementById('coords');
 const turnDisplay = document.getElementById('turn-display');
+const statusDisplay = document.getElementById('status-display');
 const whiteHandDiv = document.getElementById('white-hand');
 const blackHandDiv = document.getElementById('black-hand');
 
@@ -12,7 +13,7 @@ const COLORS = {
     White: { fill: '#ffffff', text: '#000000' },
     Black: { fill: '#333333', text: '#ffffff' },
     Empty: { fill: '#eee4d3', stroke: '#cbbba0' },
-    Selected: { stroke: '#007bff', width: 4 },
+    Selected: { stroke: '#ffcc00', width: 4 },
     Hover: { stroke: '#a8d5ff', width: 2 }
 };
 
@@ -25,9 +26,10 @@ const PIECE_LABELS = {
 };
 
 // --- State ---
-let gameState = { grid: {}, hands: {}, current_turn: 'White' };
+let gameState = { grid: {}, hands: {}, current_turn: 'White', game_status: 'active' };
 let hoveredHex = { q: null, r: null };
-let selectedPieceFromHand = null; // { type, color }
+let selectedFromHand = null; // { type, color }
+let selectedFromBoard = null; // { q, r }
 
 // --- Hex Math Helpers ---
 function getHexCorner(center, size, i) {
@@ -64,8 +66,9 @@ function hexRound(q, r) {
 }
 
 // --- Rendering ---
-function drawHex(q, r, piece = null, isHovered = false) {
+function drawHex(q, r, stack = [], isHovered = false, isSelected = false) {
     const center = axialToPixel(q, r);
+    const piece = stack.length > 0 ? stack[stack.length - 1] : null;
     const colorTheme = piece ? COLORS[piece.color] : COLORS.Empty;
 
     ctx.beginPath();
@@ -81,12 +84,15 @@ function drawHex(q, r, piece = null, isHovered = false) {
     ctx.fill();
 
     // Stroke hex
-    if (isHovered) {
+    if (isSelected) {
+        ctx.strokeStyle = COLORS.Selected.stroke;
+        ctx.lineWidth = COLORS.Selected.width;
+    } else if (isHovered) {
         ctx.strokeStyle = COLORS.Hover.stroke;
         ctx.lineWidth = COLORS.Hover.width;
     } else {
         ctx.strokeStyle = COLORS.Empty.stroke;
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 1;
     }
     ctx.stroke();
 
@@ -97,6 +103,20 @@ function drawHex(q, r, piece = null, isHovered = false) {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(PIECE_LABELS[piece.type] || '?', center.x, center.y);
+
+        // Stack indicator
+        if (stack.length > 1) {
+            ctx.fillStyle = colorTheme.text;
+            ctx.font = 'bold 12px sans-serif';
+            ctx.fillText(stack.length, center.x + 15, center.y - 15);
+            
+            // Draw a second ring for stack
+            ctx.beginPath();
+            ctx.arc(center.x, center.y, HEX_SIZE * 0.8, 0, Math.PI * 2);
+            ctx.strokeStyle = colorTheme.text;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
     }
 
     // Small coordinate debug text
@@ -110,7 +130,6 @@ function updateHandUI() {
         const div = color === 'White' ? whiteHandDiv : blackHandDiv;
         const hand = gameState.hands[color] || [];
         
-        // Group by type for a cleaner UI
         const counts = hand.reduce((acc, p) => {
             acc[p.type] = (acc[p.type] || 0) + 1;
             return acc;
@@ -120,18 +139,21 @@ function updateHandUI() {
         Object.keys(PIECE_LABELS).forEach(type => {
             const count = counts[type] || 0;
             const btn = document.createElement('div');
-            btn.className = `piece-button ${count === 0 ? 'disabled' : ''} ${selectedPieceFromHand?.type === type && selectedPieceFromHand?.color === color ? 'selected' : ''}`;
+            const isSelected = selectedFromHand?.type === type && selectedFromHand?.color === color;
+            btn.className = `piece-button ${count === 0 ? 'disabled' : ''} ${isSelected ? 'selected' : ''}`;
             btn.innerText = PIECE_LABELS[type];
             btn.title = `${type} (${count})`;
             
-            if (count > 0 && color === gameState.current_turn) {
+            if (count > 0 && color === gameState.current_turn && gameState.game_status === 'active') {
                 btn.onclick = () => {
-                    if (selectedPieceFromHand?.type === type && selectedPieceFromHand?.color === color) {
-                        selectedPieceFromHand = null;
+                    selectedFromBoard = null;
+                    if (isSelected) {
+                        selectedFromHand = null;
                     } else {
-                        selectedPieceFromHand = { type, color };
+                        selectedFromHand = { type, color };
                     }
                     updateHandUI();
+                    draw();
                 };
             }
             
@@ -161,18 +183,23 @@ function draw() {
     if (!canvas.width || !canvas.height) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // 1. Determine grid range to draw (center around 0,0)
-    // We want to show a reasonable area around the pieces
-    const range = 5;
-    for (let q = -range; q <= range; q++) {
-        for (let r = -range; r <= range; r++) {
-            if (Math.abs(q + r) <= range) {
-                const key = `${q},${r}`;
-                const isHovered = q === hoveredHex.q && r === hoveredHex.r;
-                const stack = gameState.grid[key];
-                const topPiece = stack && stack.length > 0 ? stack[stack.length - 1] : null;
-                drawHex(q, r, topPiece, isHovered);
-            }
+    // Dynamic range based on pieces
+    let minQ = -3, maxQ = 3, minR = -3, maxR = 3;
+    Object.keys(gameState.grid).forEach(key => {
+        const [q, r] = key.split(',').map(Number);
+        minQ = Math.min(minQ, q - 2);
+        maxQ = Math.max(maxQ, q + 2);
+        minR = Math.min(minR, r - 2);
+        maxR = Math.max(maxR, r + 2);
+    });
+
+    for (let q = minQ; q <= maxQ; q++) {
+        for (let r = minR; r <= maxR; r++) {
+            const key = `${q},${r}`;
+            const isHovered = q === hoveredHex.q && r === hoveredHex.r;
+            const isSelected = selectedFromBoard && q === selectedFromBoard.q && r === selectedFromBoard.r;
+            const stack = gameState.grid[key] || [];
+            drawHex(q, r, stack, isHovered, isSelected);
         }
     }
 }
@@ -181,13 +208,28 @@ function draw() {
 async function fetchState() {
     try {
         const response = await fetch('/state');
-        gameState = await response.json();
-        turnDisplay.innerText = `Turn: ${gameState.current_turn}`;
-        updateHandUI();
+        const newState = await response.json();
+        
+        // Only update if something changed (to avoid flickering if possible)
+        gameState = newState;
+        updateUI();
         draw();
     } catch (err) {
         console.error("Failed to fetch game state:", err);
     }
+}
+
+function updateUI() {
+    turnDisplay.innerText = `Turn: ${gameState.current_turn}`;
+    const statusMap = {
+        'active': 'Game In Progress',
+        'white_win': 'White Wins!',
+        'black_win': 'Black Wins!',
+        'draw': 'Draw!'
+    };
+    statusDisplay.innerText = statusMap[gameState.game_status] || gameState.game_status;
+    statusDisplay.style.color = gameState.game_status === 'active' ? '#666' : '#dc3545';
+    updateHandUI();
 }
 
 async function placePiece(q, r, type) {
@@ -200,12 +242,11 @@ async function placePiece(q, r, type) {
         
         if (response.ok) {
             gameState = await response.json();
-            selectedPieceFromHand = null;
-            updateHandUI();
+            selectedFromHand = null;
+            updateUI();
             draw();
         } else {
             const err = await response.text();
-            console.error("Placement failed:", err);
             alert("Invalid move: " + err);
         }
     } catch (err) {
@@ -213,9 +254,31 @@ async function placePiece(q, r, type) {
     }
 }
 
+async function movePiece(fromQ, fromR, toQ, toR) {
+    try {
+        const response = await fetch('/move', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ from_q: fromQ, from_r: fromR, to_q: toQ, to_r: toR })
+        });
+        
+        if (response.ok) {
+            gameState = await response.json();
+            selectedFromBoard = null;
+            updateUI();
+            draw();
+        } else {
+            const err = await response.text();
+            alert("Invalid move: " + err);
+        }
+    } catch (err) {
+        console.error("Failed to move piece:", err);
+    }
+}
+
 // --- Setup & Interaction ---
 function resize() {
-    canvas.width = window.innerWidth * 0.9;
+    canvas.width = window.innerWidth * 0.95;
     canvas.height = window.innerHeight * 0.8;
     draw();
 }
@@ -237,15 +300,36 @@ canvas.addEventListener('mousemove', (e) => {
 });
 
 canvas.addEventListener('click', (e) => {
-    if (selectedPieceFromHand) {
-        const rect = canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        const hex = pixelToAxial(x, y);
-        placePiece(hex.q, hex.r, selectedPieceFromHand.type);
+    if (gameState.game_status !== 'active') return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const hex = pixelToAxial(x, y);
+    const key = `${hex.q},${hex.r}`;
+    const stack = gameState.grid[key] || [];
+    const topPiece = stack.length > 0 ? stack[stack.length - 1] : null;
+
+    if (selectedFromHand) {
+        placePiece(hex.q, hex.r, selectedFromHand.type);
+    } else if (selectedFromBoard) {
+        if (selectedFromBoard.q === hex.q && selectedFromBoard.r === hex.r) {
+            // Deselect
+            selectedFromBoard = null;
+        } else {
+            // Attempt move
+            movePiece(selectedFromBoard.q, selectedFromBoard.r, hex.q, hex.r);
+        }
+    } else if (topPiece && topPiece.color === gameState.current_turn) {
+        // Select from board
+        selectedFromBoard = { q: hex.q, r: hex.r };
+        selectedFromHand = null;
     }
+    
+    updateHandUI();
+    draw();
 });
 
 // Initial fetch
 fetchState();
-setInterval(fetchState, 5000); // Polling slower now as we update on action
+setInterval(fetchState, 5000); 
